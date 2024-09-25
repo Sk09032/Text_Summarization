@@ -1,3 +1,2 @@
 spacy
-en_core_web_sm
 streamlit
