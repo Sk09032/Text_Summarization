@@ -1,9 +1,10 @@
 import streamlit as st
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
+from spacy.cli import download
 from heapq import nlargest
 import string
-
+download("en_core_web_sm")
 nlp = spacy.load("en_core_web_sm")
 
 list_of_stopwords = list(STOP_WORDS)
