@@ -1,59 +1,62 @@
 import streamlit as st
-import spacy
-from spacy.lang.en.stop_words import STOP_WORDS
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.probability import FreqDist
 from heapq import nlargest
 import string
 
 # Must be the first Streamlit command
 st.set_page_config(page_title="Text Summarization", layout="wide", initial_sidebar_state="collapsed")
 
-# Load spaCy model
+# Download required NLTK data
 @st.cache_resource
-def load_spacy_model():
-    try:
-        return spacy.load("en_core_web_sm")
-    except IOError:
-        st.error("spaCy model 'en_core_web_sm' not found. Please install it manually using: python -m spacy download en_core_web_sm")
-        st.stop()
+def download_nltk_data():
+    nltk.download('punkt', quiet=True)
+    nltk.download('stopwords', quiet=True)
 
-nlp = load_spacy_model()
+download_nltk_data()
 
 # Set up stopwords and punctuation
-list_of_stopwords = list(STOP_WORDS)
+stop_words = set(stopwords.words('english'))
 punctuation = string.punctuation + '\n'
 
 st.title("This is an Extractive Text Summarization Streamlit App.")
-st.subheader("Using spaCy")
+st.subheader("Using NLTK")
 
 text = st.text_area("Enter your text here", height=200)
 percent = st.number_input("Enter the ratio of summary (0-1)", min_value=0.0, max_value=1.0, value=0.3)
 
 def generate_summary():
     if text:
-        doc = nlp(text)
-        sentence_tokens = [sent for sent in doc.sents]
-        word_tokens = [i for i in doc]
+        # Tokenize the text into sentences and words
+        sentence_tokens = sent_tokenize(text)
+        word_tokens = word_tokenize(text.lower())
 
-        word_freq = {}
-        for word in doc:
-            if word.text.lower() not in list_of_stopwords and word.text not in punctuation:
-                word_freq[word.text] = word_freq.get(word.text, 0) + 1
+        # Remove stopwords and punctuation
+        word_tokens = [word for word in word_tokens if word not in stop_words and word not in punctuation]
 
-        max_freq = max(word_freq.values(), default=1)
+        # Calculate word frequencies
+        word_freq = FreqDist(word_tokens)
+
+        # Normalize frequencies
+        max_freq = max(word_freq.values())
         for word in word_freq.keys():
-            word_freq[word] /= max_freq
+            word_freq[word] = word_freq[word] / max_freq
 
+        # Calculate sentence scores
         sent_score = {}
         for sent in sentence_tokens:
-            for word in sent:
-                if word.text in word_freq.keys():
-                    sent_score[sent] = sent_score.get(sent, 0) + word_freq[word.text]
+            for word in word_tokenize(sent.lower()):
+                if word in word_freq.keys():
+                    sent_score[sent] = sent_score.get(sent, 0) + word_freq[word]
 
+        # Select top sentences
         select_length = max(1, int(len(sentence_tokens) * percent))
         summary = nlargest(select_length, sent_score, key=sent_score.get)
 
-        final_summary = [sent.text for sent in summary]
-        summary_text = ' '.join(final_summary)
+        # Join the summary sentences
+        summary_text = ' '.join(summary)
 
         st.write("Summary:")
         st.write(summary_text)
