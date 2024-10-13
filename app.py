@@ -1,55 +1,60 @@
-import validators,streamlit as st
-from langchain.prompts import PromptTemplate
-from langchain_groq import ChatGroq
-from langchain.chains.summarize import load_summarize_chain
-from langchain_community.document_loaders import YoutubeLoader,UnstructuredURLLoader
+import streamlit as st
+import spacy
+from spacy.lang.en.stop_words import STOP_WORDS
+from spacy.cli import download
+from heapq import nlargest
+import string
 
+# Must be the first Streamlit command
+st.set_page_config(page_title="Text Summarization", layout="wide", initial_sidebar_state="collapsed")
 
-## sstreamlit APP
-st.set_page_config(page_title="LangChain: Summarize Text From YT or Website", page_icon="🦜")
-st.title("🦜 LangChain: Summarize Text From YT or Website")
-st.subheader('Summarize URL')
+# Download and load spaCy model
+@st.cache_resource
+def load_spacy_model():
+    download("en_core_web_sm")
+    return spacy.load("en_core_web_sm")
 
+nlp = load_spacy_model()
 
+# Set up stopwords and punctuation
+list_of_stopwords = list(STOP_WORDS)
+punctuation = string.punctuation + '\n'
 
-## Get the Groq API Key and url(YT or website)to be summarized
-with st.sidebar:
-    groq_api_key=st.text_input("Groq API Key",value="",type="password")
+st.title("This is an Extractive Text Summarization Streamlit App.")
+st.subheader("Using spaCy")
 
-generic_url=st.text_input("URL",label_visibility="collapsed")
+text = st.text_area("Enter your text here", height=200)
+percent = st.number_input("Enter the ratio of summary (0-1)", min_value=0.0, max_value=1.0, value=0.3)
 
-## Gemma Model USsing Groq API
-llm =ChatGroq(model="Gemma-7b-It", groq_api_key=groq_api_key)
+def generate_summary():
+    if text:
+        doc = nlp(text)
+        sentence_tokens = [sent for sent in doc.sents]
+        word_tokens = [i for i in doc]
 
-prompt_template="""
-Provide a summary of the following content in 300 words:
-Content:{text}
+        word_freq = {}
+        for word in doc:
+            if word.text.lower() not in list_of_stopwords and word.text not in punctuation:
+                word_freq[word.text] = word_freq.get(word.text, 0) + 1
 
-"""
-prompt=PromptTemplate(template=prompt_template,input_variables=["text"])
+        max_freq = max(word_freq.values(), default=1)
+        for word in word_freq.keys():
+            word_freq[word] /= max_freq
 
-if st.button("Summarize the Content from YT or Website"):
-    ## Validate all the inputs
-    if not groq_api_key.strip() or not generic_url.strip():
-        st.error("Please provide the information to get started")
-    elif not validators.url(generic_url):
-        st.error("Please enter a valid Url. It can may be a YT video utl or website url")
+        sent_score = {}
+        for sent in sentence_tokens:
+            for word in sent:
+                if word.text in word_freq.keys():
+                    sent_score[sent] = sent_score.get(sent, 0) + word_freq[word.text]
 
-    else:
-        try:
-            with st.spinner("Waiting..."):
-                ## loading the website or yt video data
-                if "youtube.com" in generic_url:
-                    loader=YoutubeLoader.from_youtube_url(generic_url,add_video_info=True)
-                else:
-                    loader=UnstructuredURLLoader(urls=[generic_url],ssl_verify=False,headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"})
-                docs=loader.load()
+        select_length = max(1, int(len(sentence_tokens) * percent))
+        summary = nlargest(select_length, sent_score, key=sent_score.get)
 
-                ## Chain For Summarization
-                chain=load_summarize_chain(llm,chain_type="stuff",prompt=prompt)
-                output_summary=chain.run(docs)
+        final_summary = [word.text for word in summary]
+        summary_text = ' '.join(final_summary)
 
-                st.success(output_summary)
-        except Exception as e:
-            st.exception(f"Exception:{e}")
-                    
+        st.write("Summary:")
+        st.write(summary_text)
+
+if st.button("Generate Summary"):
+    generate_summary()
