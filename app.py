@@ -1,4 +1,8 @@
 import streamlit as st
+
+# Must be the first Streamlit command
+st.set_page_config(page_title="Text Summarization", layout="wide", initial_sidebar_state="collapsed")
+
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize, word_tokenize
@@ -25,8 +29,6 @@ download_nltk_data()
 # Set up stopwords and punctuation
 stop_words = set(stopwords.words('english'))
 punctuation = string.punctuation + '\n'
-
-st.set_page_config(page_title="Text Summarization", layout="wide", initial_sidebar_state="collapsed")
 
 st.title("This is an Extractive Text Summarization Streamlit App.")
 st.subheader("Using NLTK")
