@@ -1,77 +1,55 @@
-import streamlit as st
+import validators,streamlit as st
+from langchain.prompts import PromptTemplate
+from langchain_groq import ChatGroq
+from langchain.chains.summarize import load_summarize_chain
+from langchain_community.document_loaders import YoutubeLoader,UnstructuredURLLoader
 
-# Must be the first Streamlit command
-st.set_page_config(page_title="Text Summarization", layout="wide", initial_sidebar_state="collapsed")
 
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.probability import FreqDist
-from heapq import nlargest
-import string
+## sstreamlit APP
+st.set_page_config(page_title="LangChain: Summarize Text From YT or Website", page_icon="🦜")
+st.title("🦜 LangChain: Summarize Text From YT or Website")
+st.subheader('Summarize URL')
 
-# Function to download NLTK data
-@st.cache_resource
-def download_nltk_data():
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except LookupError:
-        nltk.download('punkt')
-    
-    try:
-        nltk.data.find('corpora/stopwords')
-    except LookupError:
-        nltk.download('stopwords')
 
-# Download required NLTK data
-download_nltk_data()
 
-# Set up stopwords and punctuation
-stop_words = set(stopwords.words('english'))
-punctuation = string.punctuation + '\n'
+## Get the Groq API Key and url(YT or website)to be summarized
+with st.sidebar:
+    groq_api_key=st.text_input("Groq API Key",value="",type="password")
 
-st.title("This is an Extractive Text Summarization Streamlit App.")
-st.subheader("Using NLTK")
+generic_url=st.text_input("URL",label_visibility="collapsed")
 
-text = st.text_area("Enter your text here", height=200)
-percent = st.number_input("Enter the ratio of summary (0-1)", min_value=0.0, max_value=1.0, value=0.3)
+## Gemma Model USsing Groq API
+llm =ChatGroq(model="Gemma-7b-It", groq_api_key=groq_api_key)
 
-def generate_summary():
-    if text:
+prompt_template="""
+Provide a summary of the following content in 300 words:
+Content:{text}
+
+"""
+prompt=PromptTemplate(template=prompt_template,input_variables=["text"])
+
+if st.button("Summarize the Content from YT or Website"):
+    ## Validate all the inputs
+    if not groq_api_key.strip() or not generic_url.strip():
+        st.error("Please provide the information to get started")
+    elif not validators.url(generic_url):
+        st.error("Please enter a valid Url. It can may be a YT video utl or website url")
+
+    else:
         try:
-            # Tokenize the text into sentences and words
-            sentence_tokens = sent_tokenize(text)
-            word_tokens = word_tokenize(text.lower())
+            with st.spinner("Waiting..."):
+                ## loading the website or yt video data
+                if "youtube.com" in generic_url:
+                    loader=YoutubeLoader.from_youtube_url(generic_url,add_video_info=True)
+                else:
+                    loader=UnstructuredURLLoader(urls=[generic_url],ssl_verify=False,headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"})
+                docs=loader.load()
 
-            # Remove stopwords and punctuation
-            word_tokens = [word for word in word_tokens if word not in stop_words and word not in punctuation]
+                ## Chain For Summarization
+                chain=load_summarize_chain(llm,chain_type="stuff",prompt=prompt)
+                output_summary=chain.run(docs)
 
-            # Calculate word frequencies
-            word_freq = FreqDist(word_tokens)
-
-            # Normalize frequencies
-            max_freq = max(word_freq.values())
-            for word in word_freq.keys():
-                word_freq[word] = word_freq[word] / max_freq
-
-            # Calculate sentence scores
-            sent_score = {}
-            for sent in sentence_tokens:
-                for word in word_tokenize(sent.lower()):
-                    if word in word_freq.keys():
-                        sent_score[sent] = sent_score.get(sent, 0) + word_freq[word]
-
-            # Select top sentences
-            select_length = max(1, int(len(sentence_tokens) * percent))
-            summary = nlargest(select_length, sent_score, key=sent_score.get)
-
-            # Join the summary sentences
-            summary_text = ' '.join(summary)
-
-            st.write("Summary:")
-            st.write(summary_text)
+                st.success(output_summary)
         except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
-
-if st.button("Generate Summary"):
-    generate_summary()
+            st.exception(f"Exception:{e}")
+                    
