@@ -1,18 +1,20 @@
 import streamlit as st
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
-from spacy.cli import download
 from heapq import nlargest
 import string
 
 # Must be the first Streamlit command
 st.set_page_config(page_title="Text Summarization", layout="wide", initial_sidebar_state="collapsed")
 
-# Download and load spaCy model
+# Load spaCy model
 @st.cache_resource
 def load_spacy_model():
-    download("en_core_web_sm")
-    return spacy.load("en_core_web_sm")
+    try:
+        return spacy.load("en_core_web_sm")
+    except IOError:
+        st.error("spaCy model 'en_core_web_sm' not found. Please install it manually using: python -m spacy download en_core_web_sm")
+        st.stop()
 
 nlp = load_spacy_model()
 
@@ -50,7 +52,7 @@ def generate_summary():
         select_length = max(1, int(len(sentence_tokens) * percent))
         summary = nlargest(select_length, sent_score, key=sent_score.get)
 
-        final_summary = [word.text for word in summary]
+        final_summary = [sent.text for sent in summary]
         summary_text = ' '.join(final_summary)
 
         st.write("Summary:")
